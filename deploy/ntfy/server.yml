@@ -1,0 +1,6 @@
+listen-http: ":80"
+cache-file: "/var/cache/ntfy/cache.db"
+cache-duration: "720h"
+attachment-cache-dir: "/var/cache/ntfy/attachments"
+attachment-file-size-limit: "90M"
+attachment-expiry-duration: "720h"

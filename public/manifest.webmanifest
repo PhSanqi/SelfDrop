@@ -1,0 +1,9 @@
+{
+  "name": "SelfDrop · 私人传输",
+  "short_name": "SelfDrop",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f7f9",
+  "theme_color": "#f6f7f9",
+  "lang": "zh-CN"
+}

@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f6f7f9" />
+    <title>SelfDrop · 我的传输</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/styles.css?v=20261009-storage-purge-iosfix-v3" />
+  </head>
+  <body>
+    <div class="app-shell" id="appShell">
+      <aside class="sidebar" id="sidebar" aria-label="主导航">
+        <div class="brand-row">
+          <div class="brand-mark" aria-hidden="true">D</div>
+          <div>
+            <div class="brand-name">SelfDrop</div>
+            <div class="brand-caption">私人传输</div>
+          </div>
+        </div>
+
+        <nav class="nav-stack" aria-label="内容">
+          <button class="nav-item active" data-view="chat" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14v10H9l-4 3v-13Z"/></svg>
+            <span>消息</span>
+          </button>
+          <button class="nav-item" data-view="files" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5h6l1.5 2h7.5v9h-15v-11Z"/></svg>
+            <span>文件</span>
+            <span class="nav-count" id="fileCount">0</span>
+          </button>
+        </nav>
+
+        <div class="section-label">会话</div>
+        <button class="conversation-card active" data-view="chat" type="button">
+          <div class="conversation-avatar">传</div>
+          <div class="conversation-copy">
+            <div class="conversation-topline"><strong>我的传输</strong><time id="conversationTime"></time></div>
+            <div class="conversation-preview" id="conversationPreview">只在自己的设备间可见</div>
+          </div>
+        </button>
+
+        <div class="sidebar-spacer"></div>
+        <button class="profile-row" id="settingsOpen" type="button">
+          <div class="profile-avatar">z</div>
+          <div class="profile-copy">
+            <strong>私人空间</strong>
+            <span id="sidebarDevice">当前设备</span>
+          </div>
+          <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+        </button>
+      </aside>
+
+      <main class="main-panel">
+        <section class="view-panel chat-view active" id="chatView" aria-label="我的传输">
+          <header class="chat-header">
+            <div class="header-avatar">传</div>
+            <div class="header-copy">
+              <h1>我的传输</h1>
+              <p><span class="presence-dot" id="presenceDot"></span><span id="connectionLabel">正在连接</span><span class="header-separator">·</span><span id="headerDevice">当前设备</span></p>
+            </div>
+            <button class="icon-button mobile-direct-nav" data-view="files" type="button" aria-label="打开文件" title="打开文件">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5h6l1.5 2h7.5v9h-15v-11Z"/></svg>
+            </button>
+            <button class="icon-button" id="syncButton" type="button" aria-label="重新同步" title="重新同步">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a7 7 0 1 0 .2 7M19 4v4h-4"/></svg>
+            </button>
+            <button class="icon-button" id="detailsOpen" type="button" aria-label="管理与设置" title="管理与设置">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M8 14v6"/></svg>
+            </button>
+          </header>
+
+          <div class="message-stage" id="messageStage">
+            <div class="message-list" id="messageList" aria-live="polite"></div>
+            <button class="jump-latest" id="jumpLatest" type="button">回到最新</button>
+          </div>
+
+          <div class="composer-zone">
+            <div class="upload-progress hidden" id="uploadProgress" role="status" aria-live="polite">
+              <div class="upload-progress-copy">
+                <span class="upload-progress-label" id="uploadLabel">正在发送文件</span>
+                <span class="upload-progress-stats"><strong id="uploadPercent">0%</strong><span id="uploadSpeed">0 KB/s</span></span>
+                <button class="upload-cancel" id="uploadCancel" type="button" hidden>停止</button>
+              </div>
+              <span class="progress-track" aria-hidden="true"><span id="progressBar"></span></span>
+            </div>
+            <div class="composer">
+              <button class="attach-button" id="attachButton" type="button" aria-label="添加图片或文件" title="添加图片或文件">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 12.5 13 7a3 3 0 0 1 4.2 4.2l-7 7a4.5 4.5 0 0 1-6.4-6.4l7-7"/></svg>
+              </button>
+              <textarea id="messageInput" rows="1" maxlength="3800" placeholder="输入消息，或直接粘贴图片…" aria-label="输入消息"></textarea>
+              <button class="send-button" id="sendButton" type="button" aria-label="发送">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 14-7-4 14-3-5-7-2Z"/><path d="m12 14 3-3"/></svg>
+              </button>
+              <input id="photoInput" type="file" accept="image/*,video/*" multiple hidden />
+              <input id="fileInput" type="file" multiple hidden />
+            </div>
+            <div class="composer-hint">Enter 发送 · Shift + Enter 换行 · 可拖拽或粘贴文件</div>
+          </div>
+        </section>
+
+        <section class="view-panel files-view" id="filesView" aria-label="媒体与文件">
+          <header class="files-header">
+            <button class="icon-button mobile-direct-nav" data-view="chat" type="button" aria-label="返回消息" title="返回消息">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <div>
+              <h1>媒体与文件</h1>
+              <p>来自“我的传输”的附件</p>
+            </div>
+            <div class="files-spacer"></div>
+            <div class="segment-control" role="group" aria-label="文件筛选">
+              <button class="active" data-file-filter="all" type="button">全部</button>
+              <button data-file-filter="image" type="button">图片</button>
+              <button data-file-filter="file" type="button">文件</button>
+            </div>
+          </header>
+          <div class="file-library" id="fileLibrary"></div>
+        </section>
+      </main>
+    </div>
+
+    <aside class="details-panel" id="detailsPanel" aria-hidden="true" aria-label="会话详情">
+      <header class="details-header">
+        <div><span>会话详情</span><strong>我的传输</strong></div>
+        <button class="icon-button" id="detailsClose" type="button" aria-label="关闭详情">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </header>
+      <div class="details-body">
+        <section class="details-summary">
+          <div class="details-avatar">传</div>
+          <h2>我的传输</h2>
+          <p>文字、图片和文件，在自己的设备之间流转。</p>
+        </section>
+
+        <section class="setting-group">
+          <div class="setting-heading"><strong>当前设备</strong><span>用于区分消息来源</span></div>
+          <label class="field-label" for="deviceInput">设备名称</label>
+          <input class="text-field" id="deviceInput" maxlength="48" autocomplete="off" />
+          <p class="field-note">仅保存在这个浏览器。建议使用“工作电脑”“手机”等短名称。</p>
+        </section>
+
+        <section class="setting-group">
+          <div class="setting-heading"><strong>外观</strong><span>跟随当前设备保存</span></div>
+          <div class="appearance-control" role="group" aria-label="外观">
+            <button data-theme-option="system" type="button">跟随系统</button>
+            <button data-theme-option="light" type="button">浅色</button>
+            <button data-theme-option="dark" type="button">深色</button>
+          </div>
+        </section>
+
+        <section class="setting-group compact-links">
+          <button class="detail-link" id="openFilesFromDetails" type="button">
+            <span class="detail-link-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5h6l1.5 2h7.5v9h-15v-11Z"/></svg></span>
+            <span><strong>媒体与文件</strong><small id="detailFileCount">暂无附件</small></span>
+            <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
+          <button class="detail-link" id="clearDisplay" type="button">
+            <span class="detail-link-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10M9 17h6"/></svg></span>
+            <span><strong>清空显示</strong><small>只清理这台设备的聊天与文件显示，不删除历史</small></span>
+            <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
+          <button class="detail-link" id="restoreDisplay" type="button" hidden>
+            <span class="detail-link-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2-5.1M4.5 5.5v5h5"/></svg></span>
+            <span><strong>显示历史</strong><small id="restoreDisplayNote">恢复这台设备已清空的消息</small></span>
+            <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
+        </section>
+
+        <section class="setting-group">
+          <div class="setting-heading"><strong>Drop 存储</strong><span>只清理 Server 上的 Drop 副本</span></div>
+          <button class="detail-link danger-link" id="purgeStorageOpen" type="button">
+            <span class="detail-link-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></span>
+            <span><strong>清理 Drop 旧记录</strong><small>不会删除手机或电脑上的原始文件</small></span>
+            <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
+        </section>
+
+        <section class="privacy-card">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5.5 6v5c0 4.5 2.7 7.7 6.5 9 3.8-1.3 6.5-4.5 6.5-9V6L12 3Z"/><path d="m9.5 12 1.6 1.6 3.5-4"/></svg>
+          <div><strong>私人空间</strong><span>SelfDrop 不内置公网账号注册；公开访问前请使用 Access、反向代理认证或 VPN 保护入口。</span></div>
+        </section>
+      </div>
+    </aside>
+
+    <div class="scrim" id="scrim"></div>
+    <div class="attachment-sheet" id="attachmentSheet" aria-hidden="true" role="dialog" aria-modal="true" aria-label="选择要发送的内容">
+      <div class="attachment-sheet-card">
+        <div class="attachment-sheet-heading"><strong>发送内容</strong><span>手机端支持一次选择多项</span></div>
+        <button class="attachment-option" id="pickPhotos" type="button">
+          <span class="attachment-option-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m6.5 17 4-4 2.5 2.5 2-2 2.5 3.5"/></svg></span>
+          <span><strong>照片与视频</strong><small>从相册多选后直接发送</small></span>
+        </button>
+        <button class="attachment-option" id="pickFiles" type="button">
+          <span class="attachment-option-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4 4v13H7v-17Z"/><path d="M14 3.5v4h4"/></svg></span>
+          <span><strong>文件</strong><small>可一次选择多个文件</small></span>
+        </button>
+        <button class="attachment-cancel" id="attachmentCancel" type="button">取消</button>
+      </div>
+    </div>
+    <div class="attachment-sheet purge-sheet" id="purgeSheet" aria-hidden="true" role="dialog" aria-modal="true" aria-label="清理 Drop 旧记录">
+      <div class="attachment-sheet-card purge-sheet-card">
+        <div class="attachment-sheet-heading purge-heading">
+          <strong>清理 Drop 旧记录</strong>
+          <span>这里只删除 Server 上的 Drop 缓存副本和聊天记录，不会删除手机或电脑上的原始图片、视频或文件。</span>
+        </div>
+        <div class="purge-summary" id="purgeSummary">正在读取本地存储…</div>
+        <button class="purge-option" id="purgeFiles" type="button">
+          <span><strong>只删除文件记录</strong><small>删除图片、视频和文件及其聊天记录，保留纯文字消息</small></span>
+        </button>
+        <button class="purge-option purge-option-all" id="purgeAll" type="button">
+          <span><strong>删除全部 Drop 历史</strong><small>删除这个 Drop 会话在 Server 上的全部文字、文件和缓存记录</small></span>
+        </button>
+        <button class="attachment-cancel" id="purgeCancel" type="button">取消</button>
+      </div>
+    </div>
+    <div class="drop-overlay" id="dropOverlay" aria-hidden="true">
+      <div class="drop-overlay-card">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5M7.5 9.5 12 5l4.5 4.5M5 16.5V19h14v-2.5"/></svg>
+        <strong>松开即可发送</strong>
+        <span>图片和文件会进入“我的传输”</span>
+      </div>
+    </div>
+    <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+    <script type="module" src="/app.js?v=20261009-upload-confirm-v1"></script>
+  </body>
+</html>

@@ -1,0 +1,31 @@
+services:
+  ntfy:
+    image: binwiederhier/ntfy:v2.29.0
+    command: serve
+    restart: unless-stopped
+    volumes:
+      - ntfy-data:/var/cache/ntfy
+      - ./deploy/ntfy/server.yml:/etc/ntfy/server.yml:ro
+
+  selfdrop:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - ntfy
+    ports:
+      - "${SELFDROP_BIND:-127.0.0.1}:${SELFDROP_PORT:-2585}:2585"
+    environment:
+      DROP_CHAT_HOST: 0.0.0.0
+      DROP_CHAT_PORT: 2585
+      NTFY_BASE_URL: http://ntfy
+      NTFY_TOPIC: ${NTFY_TOPIC:-selfdrop}
+      DROP_CHAT_DATA_DIR: /var/lib/selfdrop
+      NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+      NTFY_ATTACHMENT_DIR: /var/cache/ntfy/attachments
+    volumes:
+      - selfdrop-data:/var/lib/selfdrop
+      - ntfy-data:/var/cache/ntfy
+
+volumes:
+  ntfy-data:
+  selfdrop-data:
