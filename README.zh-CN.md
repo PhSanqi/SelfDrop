@@ -76,6 +76,8 @@ SelfDrop **不内置面向公网的账号系统**，不要把它裸露在互联�
 
 当公网域名由 Cloudflare Access 保护时，设置 `SELFDROP_ACCESS_LOGOUT_URL=/cdn-cgi/access/logout`，Web UI 就会提供 **退出此浏览器** 操作。点击后清除当前浏览器的 Access 会话；之后再次访问时，需要按照你的 Access Policy 重新认证，例如重新完成邮箱 One-Time PIN。若使用其他认证网关，则保持该变量为空。
 
+这里的“浏览器”准确指 **当前 browser profile / cookie jar**，而不是整台物理设备。Cloudflare Access 的网页授权保存在浏览器 cookie 中，而 Chrome / Chromium 的不同 Profile 会隔离浏览数据。因此，在某个 Chrome Profile 中退出，会让该 Profile 内的标签页失去这次 Access 会话；但不会让另一个 Chrome Profile、Edge / Firefox 等其他浏览器、独立的 Guest / Incognito cookie jar 或另一台设备一起退出。`cloudflared` CLI 凭据不保存在浏览器 cookie 中，但 Access logout 会撤销此前签发的 Access token，因此同一次 Access 会话产生的 CLI token 在撤销传播后也可能需要重新授权。
+
 ## Docker Compose 快速运行
 
 需要 Docker 与 Compose。
@@ -141,6 +143,8 @@ npm run agent -- config
 ```
 
 如果当前没有有效的 Access session，`cloudflared` 会打开正常的浏览器认证流程。若 Access Policy 使用邮箱 One-Time PIN，CLI 就会复用和网页一致的邮箱 OTP 身份验证；SelfDrop 只保存绑定域名，不保存 OTP。
+
+这个浏览器步骤只负责把 Access token 安全交给 `cloudflared`，CLI 不会复制或复用浏览器 cookie。本机 CLI token 有效期间，正常执行 `list`、`pull`、`push` 不会反复打开浏览器；只有 token 到期或被撤销后才需要重新授权。
 
 ```bash
 # 查看已经上传到 SelfDrop 的文件

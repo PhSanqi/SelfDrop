@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.mjs",
     "agent": "node selfdrop-agent.mjs",
-    "check": "node --check server.mjs && node --check public/app.js && node --check selfdrop-agent.mjs"
+    "check": "node --check server.mjs && node --check public/app.js && node --check selfdrop-agent.mjs && node scripts/platform-smoke.mjs"
   },
   "description": "A lightweight, self-hosted cross-device drop and chat interface backed by ntfy."
 }

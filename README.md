@@ -75,6 +75,8 @@ The bundled Docker Compose keeps ntfy internal to the Compose network and expose
 
 When the public hostname is protected by Cloudflare Access, set `SELFDROP_ACCESS_LOGOUT_URL=/cdn-cgi/access/logout`. The web UI will then expose an **Exit this browser** control. This clears the current browser's Access session; a later visit must authenticate again according to your Access policy (for example, email One-Time PIN). Leave the variable empty when another authentication gateway is used.
 
+In this context, **browser** means the current browser profile / cookie jar, not the entire physical device. Cloudflare Access stores authorization in browser cookies, while Chrome/Chromium profiles keep browsing data separated. Therefore, logging out from one Chrome profile invalidates the Access session used by tabs in that profile, but does not log out a different Chrome profile, another browser such as Edge or Firefox, a separate guest/incognito cookie jar, or another device. `cloudflared` CLI credentials are stored separately from browser cookies; however, an Access logout also revokes previously issued Access tokens, so a CLI token from that session may require authorization again after revocation propagates.
+
 ## Quick start with Docker Compose
 
 Requirements: Docker with Compose support.
@@ -140,6 +142,8 @@ npm run agent -- config
 ```
 
 If there is no current Access session, `cloudflared` opens the normal browser login flow. With a One-Time PIN Access policy, the CLI therefore uses the same email OTP identity as the web page. SelfDrop stores the bound endpoint, not the OTP.
+
+The browser authorization step is only a bridge that returns an Access token to `cloudflared`; the CLI does not reuse or copy the browser cookie itself. Once the CLI token is valid, normal `list`, `pull`, and `push` commands do not need to reopen the browser until the Access token expires or is revoked.
 
 ```bash
 # discover files already uploaded to SelfDrop

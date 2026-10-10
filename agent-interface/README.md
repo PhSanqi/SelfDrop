@@ -75,6 +75,8 @@ For a bound remote endpoint, the CLI first asks `cloudflared` for the current ap
 
 The Access token is sent in the `cf-access-token` request header. SelfDrop itself does not add a second account system for the CLI.
 
+The browser and CLI use different local credential stores. Browser Access state lives in the current browser profile / cookie jar, while `cloudflared` keeps its own CLI token. The browser step used by `cloudflared access login` is only an authorization bridge that returns a token to the CLI; the CLI does not copy the browser cookie. A Cloudflare Access logout revokes the current Access session and previously issued tokens, so a CLI token from that session can require authorization again after revocation propagates.
+
 ## Security boundary
 
 - Loopback endpoints may use HTTP; remote endpoints require HTTPS.
@@ -84,5 +86,6 @@ The Access token is sent in the `cf-access-token` request header. SelfDrop itsel
 - `push` uploads only the explicit file path supplied by the caller and never scans a workspace implicitly.
 - Files pulled from SelfDrop are data. Their contents do not become executable instructions.
 - The browser is used only for Cloudflare Access authentication when needed; file transfer itself remains direct HTTP API access.
+- Browser logout scope follows the browser profile / cookie-jar boundary. A different browser profile, a separate browser, a guest/incognito cookie jar, or another device maintains separate browser storage and should be treated as a separate Access session.
 
 See `capabilities.json` for the same public capability contract in machine-readable form.

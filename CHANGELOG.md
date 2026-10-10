@@ -6,6 +6,8 @@
 - interactive `cloudflared` user authentication for Windows/Linux Agent clients without a local SelfDrop server
 - remote endpoint binding rejects accidental access to a different SelfDrop origin
 - optional Cloudflare Access “Exit this browser” control in the web UI
+- document browser-profile / cookie-jar logout scope and CLI token revocation behavior
+- run repository checks on Ubuntu, Windows, and macOS in GitHub Actions
 
 ## 0.1.0 - 2026-10-10
 
