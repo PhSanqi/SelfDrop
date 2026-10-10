@@ -66,6 +66,8 @@ const els = {
   purgeSummary: $('#purgeSummary'),
   purgeFiles: $('#purgeFiles'),
   purgeAll: $('#purgeAll'),
+  accessLogoutGroup: $('#accessLogoutGroup'),
+  accessLogout: $('#accessLogout'),
 };
 
 function detectDevice() {
@@ -76,6 +78,11 @@ function detectDevice() {
   if (/Macintosh|Mac OS/i.test(ua)) return 'Mac';
   if (/Linux/i.test(ua)) return 'Linux';
   return '当前设备';
+}
+
+function isLoopbackPage() {
+  const host = location.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return host === 'localhost' || host === '::1' || /^127(?:\.\d{1,3}){3}$/.test(host);
 }
 
 function applyTheme(theme) {
@@ -1020,6 +1027,23 @@ function toast(message, error = false) {
   setTimeout(() => node.remove(), 3200);
 }
 
+async function configureAccessLogout() {
+  if (isLoopbackPage()) return;
+  try {
+    const response = await fetch('/api/health', { cache: 'no-store' });
+    const health = await readApiJson(response);
+    const logoutUrl = typeof health?.accessLogoutUrl === 'string' ? health.accessLogoutUrl.trim() : '';
+    if (!logoutUrl) return;
+    els.accessLogoutGroup.hidden = false;
+    els.accessLogout.addEventListener('click', () => {
+      window.location.assign(logoutUrl);
+    });
+  } catch {
+    // Logout is an optional deployment capability. Do not block SelfDrop boot
+    // when the health probe or external authentication layer is unavailable.
+  }
+}
+
 function bindEvents() {
   els.sendButton.addEventListener('click', sendText);
   els.messageInput.addEventListener('input', resizeComposer);
@@ -1171,6 +1195,7 @@ async function boot() {
   updateDevice(state.device);
   saveHiddenMessages();
   bindEvents();
+  configureAccessLogout();
   resizeComposer();
   renderMessages(false);
   try {

@@ -58,7 +58,7 @@ SelfDrop Web + 文件传输层
 - 中文 / 英文界面
 - 明暗外观
 - 服务器侧旧历史 / 文件副本清理
-- 面向同机 AI 工具的 Local Agent File Gateway：`list`、`pull`、`push`
+- 面向本机 AI 工具的 Agent File Gateway：`list`、`pull`、`push`，可访问由 Cloudflare Access 保护的远程 SelfDrop
 - 前端无框架，应用运行时只依赖 Node.js
 
 ## 安全边界
@@ -73,6 +73,8 @@ SelfDrop **不内置面向公网的账号系统**，不要把它裸露在互联�
 - 其他 Identity-aware Gateway。
 
 仓库提供的 Docker Compose 默认只在本机 loopback 暴露 SelfDrop，ntfy 只存在于 Compose 内部网络中。
+
+当公网域名由 Cloudflare Access 保护时，设置 `SELFDROP_ACCESS_LOGOUT_URL=/cdn-cgi/access/logout`，Web UI 就会提供 **退出此浏览器** 操作。点击后清除当前浏览器的 Access 会话；之后再次访问时，需要按照你的 Access Policy 重新认证，例如重新完成邮箱 One-Time PIN。若使用其他认证网关，则保持该变量为空。
 
 ## Docker Compose 快速运行
 
@@ -123,12 +125,22 @@ npm start
 | `DROP_CHAT_DATA_DIR` | `~/.local/share/drop-chat` | 大文件与上传状态目录 |
 | `NTFY_CACHE_FILE` | `~/.local/share/ntfy/cache.db` | 清理功能读取的 ntfy cache DB |
 | `NTFY_ATTACHMENT_DIR` | `~/.local/share/ntfy/attachments` | 清理功能读取的 ntfy 附件目录 |
+| `SELFDROP_ACCESS_LOGOUT_URL` | 未设置 | 可选的外部认证退出地址；使用 Cloudflare Access 时可设为 `/cdn-cgi/access/logout` |
 
 如果没有配置 ntfy 凭据，SelfDrop 不发送 Authorization header。这适合 ntfy 只运行在 localhost 或容器内部网络的部署方式。
 
-## Local Agent File Gateway
+## Agent File Gateway
 
-SelfDrop 同时提供一个很小的本地 CLI，供编码 Agent 等本机 AI 工具直接发现、拉取和回传文件，不需要操作浏览器 UI。它复用现有 SelfDrop 文件对象和上传 / 下载 HTTP 链路，不建立第二套传输服务或存储。
+SelfDrop 同时提供一个很小的本地 CLI，供编码 Agent 等本机 AI 工具直接发现、拉取和回传文件，不需要操作浏览器 UI。SelfDrop Server 可以始终只部署在一台服务器上，而 Windows / Linux 客户端通过受保护的 SelfDrop 域名访问同一批文件。CLI 复用现有 SelfDrop 文件对象和上传 / 下载 HTTP 链路，不建立第二套传输服务或存储。
+
+远程 SelfDrop 如果由 Cloudflare Access 保护，先在客户端安装 `cloudflared`，然后只绑定一次 HTTPS 域名。Windows 也可以直接把 `cloudflared.exe` 放到 `%LOCALAPPDATA%\SelfDrop\bin\`，无需管理员安装或修改系统 `PATH`。
+
+```bash
+npm run agent -- init https://drop.example.com
+npm run agent -- config
+```
+
+如果当前没有有效的 Access session，`cloudflared` 会打开正常的浏览器认证流程。若 Access Policy 使用邮箱 One-Time PIN，CLI 就会复用和网页一致的邮箱 OTP 身份验证；SelfDrop 只保存绑定域名，不保存 OTP。
 
 ```bash
 # 查看已经上传到 SelfDrop 的文件
@@ -141,7 +153,9 @@ npm run agent -- pull <file-id>
 npm run agent -- push <local-file>
 ```
 
-第一阶段明确只支持本机：CLI 仅接受 loopback SelfDrop 地址（`127.0.0.1`、`localhost`、`::1`），并且不提供删除能力。`pull` 默认下载到 `~/.local/share/selfdrop-agent/downloads`，除非显式使用 `--force`，否则不会覆盖已有本地文件。
+loopback 地址仍然可以直接使用。远程地址必须使用 HTTPS，并且必须先通过 `init` 绑定；之后如果显式传入远程 `--base` 或 `SELFDROP_BASE_URL`，只有与已保存地址完全一致才会接受。CLI 不提供删除能力；除非显式使用 `--force`，否则 `pull` 不会覆盖已有本地文件。
+
+Windows 和 Linux 使用同一套命令。默认配置路径：Windows 为 `%LOCALAPPDATA%\SelfDrop\agent.json`；Linux 为 `$XDG_CONFIG_HOME/selfdrop/agent.json`，未设置 XDG 时为 `~/.config/selfdrop/agent.json`。默认下载目录：Windows 为 `%LOCALAPPDATA%\SelfDrop\downloads`，Linux 为 `~/.local/share/selfdrop-agent/downloads`。
 
 完整配置和机器可读能力契约见 [`agent-interface/README.md`](agent-interface/README.md) 与 [`agent-interface/capabilities.json`](agent-interface/capabilities.json)。
 
@@ -161,7 +175,7 @@ SelfDrop 是 browser-first 的，因此每台设备都不要求额外安装专�
 npm run check
 ```
 
-前端刻意不引入框架。主要界面文件是 `public/app.js`、`public/styles.css`、`public/index.html`；`server.mjs` 提供 HTTP API、ntfy bridge、大文件存储、清理与 SSE；`selfdrop-agent.mjs` 是给本机 AI 工具与自动化使用的 `list` / `pull` / `push` 客户端。
+前端刻意不引入框架。主要界面文件是 `public/app.js`、`public/styles.css`、`public/index.html`；`server.mjs` 提供 HTTP API、ntfy bridge、大文件存储、清理与 SSE；`selfdrop-agent.mjs` 是给本机 AI 工具与自动化使用的 `list` / `pull` / `push` 客户端，也可通过 Cloudflare Access 访问远程 SelfDrop。
 
 ## 上游
 

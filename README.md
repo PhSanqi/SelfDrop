@@ -57,7 +57,7 @@ The result is much lighter than deploying a complete chat platform while still w
 - English / Simplified Chinese UI
 - Light / dark appearance
 - Server-side history/file cleanup controls
-- Local Agent File Gateway with `list`, `pull`, and `push` for same-machine AI tools
+- Agent File Gateway with `list`, `pull`, and `push` for local AI tools, including remote SelfDrop servers behind Cloudflare Access
 - No frontend framework and no application runtime dependencies beyond Node.js
 
 ## Security model
@@ -72,6 +72,8 @@ Put it behind an authentication boundary you already trust, for example:
 - another identity-aware gateway.
 
 The bundled Docker Compose keeps ntfy internal to the Compose network and exposes only SelfDrop on loopback by default.
+
+When the public hostname is protected by Cloudflare Access, set `SELFDROP_ACCESS_LOGOUT_URL=/cdn-cgi/access/logout`. The web UI will then expose an **Exit this browser** control. This clears the current browser's Access session; a later visit must authenticate again according to your Access policy (for example, email One-Time PIN). Leave the variable empty when another authentication gateway is used.
 
 ## Quick start with Docker Compose
 
@@ -122,12 +124,22 @@ Useful environment variables:
 | `DROP_CHAT_DATA_DIR` | `~/.local/share/drop-chat` | large-file and upload state |
 | `NTFY_CACHE_FILE` | `~/.local/share/ntfy/cache.db` | ntfy cache DB used by cleanup controls |
 | `NTFY_ATTACHMENT_DIR` | `~/.local/share/ntfy/attachments` | ntfy attachment directory used by cleanup controls |
+| `SELFDROP_ACCESS_LOGOUT_URL` | unset | optional external-auth logout URL; use `/cdn-cgi/access/logout` with Cloudflare Access |
 
 If no ntfy credentials are configured, SelfDrop talks to ntfy without an Authorization header. This is useful when ntfy is private on localhost or an internal container network.
 
-## Local Agent File Gateway
+## Agent File Gateway
 
-SelfDrop also includes a small CLI for local AI tools such as coding agents that need file access without operating the browser UI. It reuses the same SelfDrop file objects and upload/download HTTP paths; it is not a second transfer service.
+SelfDrop also includes a small CLI for local AI tools such as coding agents that need file access without operating the browser UI. The SelfDrop server can remain on one machine while Windows/Linux client machines use the same remote files through the protected SelfDrop domain. The CLI reuses the same SelfDrop file objects and upload/download HTTP paths; it is not a second transfer service.
+
+For a remote SelfDrop protected by Cloudflare Access, install `cloudflared` on the client machine and bind the domain once. Windows can use a user-local `%LOCALAPPDATA%\SelfDrop\bin\cloudflared.exe` without changing the system `PATH`.
+
+```bash
+npm run agent -- init https://drop.example.com
+npm run agent -- config
+```
+
+If there is no current Access session, `cloudflared` opens the normal browser login flow. With a One-Time PIN Access policy, the CLI therefore uses the same email OTP identity as the web page. SelfDrop stores the bound endpoint, not the OTP.
 
 ```bash
 # discover files already uploaded to SelfDrop
@@ -140,7 +152,9 @@ npm run agent -- pull <file-id>
 npm run agent -- push <local-file>
 ```
 
-Phase 1 is intentionally local-machine only: the CLI accepts loopback SelfDrop endpoints (`127.0.0.1`, `localhost`, or `::1`) and exposes no delete operation. `pull` defaults to `~/.local/share/selfdrop-agent/downloads` and refuses to overwrite an existing file unless `--force` is explicit.
+Loopback endpoints can still be used directly. Remote endpoints must use HTTPS and must first be bound with `init`; later remote `--base` / `SELFDROP_BASE_URL` values are refused unless they match that exact saved endpoint. The CLI exposes no delete operation. `pull` refuses to overwrite an existing file unless `--force` is explicit.
+
+Windows and Linux use the same commands. The default endpoint config is `%LOCALAPPDATA%\SelfDrop\agent.json` on Windows and `$XDG_CONFIG_HOME/selfdrop/agent.json` (or `~/.config/selfdrop/agent.json`) on Linux. Default pull destinations are `%LOCALAPPDATA%\SelfDrop\downloads` on Windows and `~/.local/share/selfdrop-agent/downloads` on Linux.
 
 Configuration and the machine-readable capability contract are documented in [`agent-interface/README.md`](agent-interface/README.md) and [`agent-interface/capabilities.json`](agent-interface/capabilities.json).
 
@@ -160,7 +174,7 @@ The UI is browser-first, so no per-device SelfDrop client is required. Modern Ch
 npm run check
 ```
 
-The project deliberately keeps the frontend dependency-free. `public/app.js`, `public/styles.css`, and `public/index.html` are the main UI files; `server.mjs` provides the HTTP API, ntfy bridge, large-file storage, cleanup, and SSE endpoints; `selfdrop-agent.mjs` is the local `list` / `pull` / `push` client for AI tools and automation.
+The project deliberately keeps the frontend dependency-free. `public/app.js`, `public/styles.css`, and `public/index.html` are the main UI files; `server.mjs` provides the HTTP API, ntfy bridge, large-file storage, cleanup, and SSE endpoints; `selfdrop-agent.mjs` is the `list` / `pull` / `push` client for local AI tools and automation, including clients that authenticate to a remote SelfDrop through Cloudflare Access.
 
 ## Upstream
 

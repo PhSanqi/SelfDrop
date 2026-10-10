@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Agent File Gateway can bind one remote HTTPS SelfDrop endpoint protected by Cloudflare Access
+- interactive `cloudflared` user authentication for Windows/Linux Agent clients without a local SelfDrop server
+- remote endpoint binding rejects accidental access to a different SelfDrop origin
+- optional Cloudflare Access “Exit this browser” control in the web UI
+
 ## 0.1.0 - 2026-10-10
 
 Initial public release.

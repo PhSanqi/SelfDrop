@@ -19,6 +19,7 @@ services:
       DROP_CHAT_PORT: 2585
       NTFY_BASE_URL: http://ntfy
       NTFY_TOPIC: ${NTFY_TOPIC:-selfdrop}
+      SELFDROP_ACCESS_LOGOUT_URL: ${SELFDROP_ACCESS_LOGOUT_URL:-}
       DROP_CHAT_DATA_DIR: /var/lib/selfdrop
       NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
       NTFY_ATTACHMENT_DIR: /var/cache/ntfy/attachments

@@ -24,9 +24,22 @@ const LARGE_DIR = join(DATA_DIR, 'large');
 const UPLOAD_DIR = join(DATA_DIR, 'uploads');
 const NTFY_CACHE_FILE = process.env.NTFY_CACHE_FILE || join(homedir(), '.local/share/ntfy/cache.db');
 const NTFY_ATTACHMENT_DIR = process.env.NTFY_ATTACHMENT_DIR || join(homedir(), '.local/share/ntfy/attachments');
+const ACCESS_LOGOUT_URL = normalizeAccessLogoutUrl(process.env.SELFDROP_ACCESS_LOGOUT_URL);
 const LARGE_MARKER = '__DROP_FILE_V1__:';
 const purgeClients = new Set();
 let purgeInProgress = false;
+
+function normalizeAccessLogoutUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' ? url.toString() : '';
+  } catch {
+    return '';
+  }
+}
 
 function loadCredentials() {
   const envUsername = String(process.env.NTFY_USERNAME || '').trim();
@@ -763,7 +776,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && url.pathname === '/api/health') {
       const upstream = await ntfyFetch('/');
-      return json(res, upstream.ok ? 200 : 503, { ok: upstream.ok, topic: TOPIC });
+      return json(res, upstream.ok ? 200 : 503, { ok: upstream.ok, topic: TOPIC, accessLogoutUrl: ACCESS_LOGOUT_URL || null });
     }
     if (req.method === 'GET' && url.pathname === '/api/messages') return await readHistory(res);
     if (req.method === 'GET' && url.pathname === '/api/events') return await proxyEvents(req, res, url);

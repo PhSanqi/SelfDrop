@@ -1,11 +1,11 @@
 {
   "name": "selfdrop-local-agent-gateway",
-  "version": 1,
+  "version": 2,
   "sourceOfTruth": "agent-interface/README.md",
   "commandPrefix": ["npm", "run", "agent", "--"],
   "capabilities": {
     "list": {
-      "description": "List file objects currently available in the local SelfDrop instance.",
+      "description": "List file objects currently available in the bound SelfDrop instance.",
       "arguments": [],
       "outputFileArray": "result.files"
     },
@@ -13,7 +13,9 @@
       "description": "Download one SelfDrop file by fileId to an explicitly controlled local path.",
       "arguments": ["fileId"],
       "options": ["--dir", "--out", "--force"],
-      "defaultDirectory": "~/.local/share/selfdrop-agent/downloads",
+      "defaultDirectory": "platform-default",
+      "windowsDefaultDirectory": "%LOCALAPPDATA%\\SelfDrop\\downloads",
+      "linuxDefaultDirectory": "~/.local/share/selfdrop-agent/downloads",
       "defaultOverwrite": false
     },
     "push": {
@@ -22,8 +24,16 @@
       "options": ["--device"]
     }
   },
+  "configuration": {
+    "commands": ["init", "config"],
+    "remoteMode": "cloudflare-access-user",
+    "remoteEndpointMustBeBound": true,
+    "remoteHttpsRequired": true,
+    "windowsCloudflaredFallback": "%LOCALAPPDATA%\\SelfDrop\\bin\\cloudflared.exe"
+  },
   "constraints": {
-    "loopbackOnly": true,
+    "loopbackOnly": false,
+    "singleBoundRemoteEndpoint": true,
     "deleteCapability": false,
     "browserAutomationRequired": false,
     "implicitWorkspaceUpload": false,
