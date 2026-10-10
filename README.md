@@ -57,6 +57,7 @@ The result is much lighter than deploying a complete chat platform while still w
 - English / Simplified Chinese UI
 - Light / dark appearance
 - Server-side history/file cleanup controls
+- Local Agent File Gateway with `list`, `pull`, and `push` for same-machine AI tools
 - No frontend framework and no application runtime dependencies beyond Node.js
 
 ## Security model
@@ -124,6 +125,25 @@ Useful environment variables:
 
 If no ntfy credentials are configured, SelfDrop talks to ntfy without an Authorization header. This is useful when ntfy is private on localhost or an internal container network.
 
+## Local Agent File Gateway
+
+SelfDrop also includes a small CLI for local AI tools such as coding agents that need file access without operating the browser UI. It reuses the same SelfDrop file objects and upload/download HTTP paths; it is not a second transfer service.
+
+```bash
+# discover files already uploaded to SelfDrop
+npm run agent -- list
+
+# download one file by the fileId returned above
+npm run agent -- pull <file-id>
+
+# upload one generated or modified local file
+npm run agent -- push <local-file>
+```
+
+Phase 1 is intentionally local-machine only: the CLI accepts loopback SelfDrop endpoints (`127.0.0.1`, `localhost`, or `::1`) and exposes no delete operation. `pull` defaults to `~/.local/share/selfdrop-agent/downloads` and refuses to overwrite an existing file unless `--force` is explicit.
+
+Configuration and the machine-readable capability contract are documented in [`agent-interface/README.md`](agent-interface/README.md) and [`agent-interface/capabilities.json`](agent-interface/capabilities.json).
+
 ## Data and cleanup
 
 SelfDrop stores large/chunked file copies in its own data directory and uses ntfy for the message timeline and smaller attachments. The cleanup controls delete **server-side SelfDrop copies and timeline records only**. They cannot delete the source photo/video/file from the phone or computer that uploaded it.
@@ -140,7 +160,7 @@ The UI is browser-first, so no per-device SelfDrop client is required. Modern Ch
 npm run check
 ```
 
-The project deliberately keeps the frontend dependency-free. `public/app.js`, `public/styles.css`, and `public/index.html` are the main UI files; `server.mjs` provides the HTTP API, ntfy bridge, large-file storage, cleanup, and SSE endpoints.
+The project deliberately keeps the frontend dependency-free. `public/app.js`, `public/styles.css`, and `public/index.html` are the main UI files; `server.mjs` provides the HTTP API, ntfy bridge, large-file storage, cleanup, and SSE endpoints; `selfdrop-agent.mjs` is the local `list` / `pull` / `push` client for AI tools and automation.
 
 ## Upstream
 

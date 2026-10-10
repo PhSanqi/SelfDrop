@@ -1,0 +1,32 @@
+{
+  "name": "selfdrop-local-agent-gateway",
+  "version": 1,
+  "sourceOfTruth": "agent-interface/README.md",
+  "commandPrefix": ["npm", "run", "agent", "--"],
+  "capabilities": {
+    "list": {
+      "description": "List file objects currently available in the local SelfDrop instance.",
+      "arguments": [],
+      "outputFileArray": "result.files"
+    },
+    "pull": {
+      "description": "Download one SelfDrop file by fileId to an explicitly controlled local path.",
+      "arguments": ["fileId"],
+      "options": ["--dir", "--out", "--force"],
+      "defaultDirectory": "~/.local/share/selfdrop-agent/downloads",
+      "defaultOverwrite": false
+    },
+    "push": {
+      "description": "Upload one explicitly selected local file to SelfDrop.",
+      "arguments": ["path"],
+      "options": ["--device"]
+    }
+  },
+  "constraints": {
+    "loopbackOnly": true,
+    "deleteCapability": false,
+    "browserAutomationRequired": false,
+    "implicitWorkspaceUpload": false,
+    "downloadImpliesUserConsumption": false
+  }
+}
