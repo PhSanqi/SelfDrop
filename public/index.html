@@ -42,7 +42,7 @@
 
         <div class="sidebar-spacer"></div>
         <button class="profile-row" id="settingsOpen" type="button">
-          <div class="profile-avatar">z</div>
+          <div class="profile-avatar">S</div>
           <div class="profile-copy">
             <strong>私人空间</strong>
             <span id="sidebarDevice">当前设备</span>
@@ -80,9 +80,10 @@
               <div class="upload-progress-copy">
                 <span class="upload-progress-label" id="uploadLabel">正在发送文件</span>
                 <span class="upload-progress-stats"><strong id="uploadPercent">0%</strong><span id="uploadSpeed">0 KB/s</span></span>
-                <button class="upload-cancel" id="uploadCancel" type="button" hidden>停止</button>
+                <button class="upload-cancel" id="uploadCancel" type="button" hidden>全部取消</button>
               </div>
               <span class="progress-track" aria-hidden="true"><span id="progressBar"></span></span>
+              <div class="upload-task-list" id="uploadTaskList"></div>
             </div>
             <div class="composer">
               <button class="attach-button" id="attachButton" type="button" aria-label="添加图片或文件" title="添加图片或文件">

@@ -4,7 +4,7 @@ import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/p
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
@@ -42,32 +42,22 @@ function normalizeAccessLogoutUrl(value) {
 }
 
 function loadCredentials() {
-  const envUsername = String(process.env.NTFY_USERNAME || '').trim();
-  const envPassword = String(process.env.NTFY_PASSWORD || '');
-  if (envUsername) return { username: envUsername, password: envPassword };
-
-  try {
-    const values = Object.fromEntries(
-      readFileSync(CREDENTIALS, 'utf8')
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .map((line) => {
-          const index = line.indexOf('=');
-          return index > 0 ? [line.slice(0, index), line.slice(index + 1)] : [line, ''];
-        }),
-    );
-    if (!values.username || !values.password) throw new Error(`Invalid ntfy credentials file: ${CREDENTIALS}`);
-    return values;
-  } catch (error) {
-    if (error?.code === 'ENOENT') return null;
-    throw error;
-  }
+  const values = Object.fromEntries(
+    readFileSync(CREDENTIALS, 'utf8')
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => {
+        const index = line.indexOf('=');
+        return index > 0 ? [line.slice(0, index), line.slice(index + 1)] : [line, ''];
+      }),
+  );
+  if (!values.username || !values.password) throw new Error(`Invalid ntfy credentials file: ${CREDENTIALS}`);
+  return values;
 }
 
 function authorization() {
-  const credentials = loadCredentials();
-  if (!credentials) return null;
-  return `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64')}`;
+  const { username, password } = loadCredentials();
+  return `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
 }
 
 function json(res, status, body) {
@@ -357,8 +347,7 @@ function foldHistory(items) {
 
 async function ntfyFetch(path, init = {}) {
   const headers = new Headers(init.headers || {});
-  const auth = authorization();
-  if (auth) headers.set('authorization', auth);
+  headers.set('authorization', authorization());
   return fetch(`${NTFY_BASE}${path}`, { ...init, headers });
 }
 
@@ -393,25 +382,75 @@ async function findLargeFileForSequence(sequenceId) {
   }
 }
 
+async function findSmallAttachmentMid(sequenceId) {
+  let db;
+  try {
+    db = await openCacheDb();
+    const row = db.prepare(`
+      SELECT mid, attachment_size
+      FROM messages
+      WHERE topic = ?
+        AND event = 'message'
+        AND (sequence_id = ? OR mid = ?)
+        AND attachment_size > 0
+      ORDER BY time DESC
+      LIMIT 1
+    `).get(TOPIC, sequenceId, sequenceId);
+    const mid = String(row?.mid || '');
+    return /^[A-Za-z0-9]{12}$/.test(mid) ? mid : null;
+  } catch {
+    return null;
+  } finally {
+    try { db?.close(); } catch { /* already closed */ }
+  }
+}
+
 async function deleteMessage(res, sequenceId) {
   const value = String(sequenceId || '').trim();
   if (!value || value.length > 128) return json(res, 400, { error: '消息标识无效' });
-  const large = await findLargeFileForSequence(value);
-  const upstream = await ntfyFetch(`/${encodeURIComponent(TOPIC)}/${encodeURIComponent(value)}`, {
-    method: 'DELETE',
-  });
-  const body = await upstream.text();
-  if (!upstream.ok) return json(res, 502, { error: `ntfy delete returned ${upstream.status}` });
-  if (large?.id) {
-    await Promise.all([
-      rm(largeFilePath(large.id), { force: true }).catch(() => {}),
-      rm(largeManifestPath(large.id), { force: true }).catch(() => {}),
-    ]);
-  }
+  const [large, smallAttachmentMid] = await Promise.all([
+    findLargeFileForSequence(value),
+    findSmallAttachmentMid(value),
+  ]);
+  const moved = [];
+  const trashDir = join(DATA_DIR, 'delete-trash', randomUUID());
+  let trashCreated = false;
   try {
-    return json(res, 200, mapDelete(JSON.parse(body)));
-  } catch {
-    return json(res, 200, { event: 'delete', sequenceId: value });
+    if (smallAttachmentMid) {
+      const source = join(NTFY_ATTACHMENT_DIR, smallAttachmentMid);
+      const info = await stat(source).catch(() => null);
+      if (info?.isFile()) {
+        await mkdir(trashDir, { recursive: true, mode: 0o700 });
+        trashCreated = true;
+        await moveIfExists(source, join(trashDir, `ntfy-${smallAttachmentMid}`), moved);
+      }
+    }
+
+    const upstream = await ntfyFetch(`/${encodeURIComponent(TOPIC)}/${encodeURIComponent(value)}`, {
+      method: 'DELETE',
+    });
+    const body = await upstream.text();
+    if (!upstream.ok) {
+      await rollbackMovedFiles(moved);
+      return json(res, 502, { error: `ntfy delete returned ${upstream.status}` });
+    }
+    if (large?.id) {
+      await Promise.all([
+        rm(largeFilePath(large.id), { force: true }).catch(() => {}),
+        rm(largeManifestPath(large.id), { force: true }).catch(() => {}),
+      ]);
+    }
+    if (trashCreated) await rm(trashDir, { recursive: true, force: true });
+    try {
+      return json(res, 200, mapDelete(JSON.parse(body)));
+    } catch {
+      return json(res, 200, { event: 'delete', sequenceId: value });
+    }
+  } catch (error) {
+    await rollbackMovedFiles(moved);
+    throw error;
+  } finally {
+    if (trashCreated) await rm(trashDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -511,28 +550,96 @@ async function initLargeUpload(req, res) {
   return json(res, 200, { uploadId: id, chunkSize: meta.chunkSize, chunkCount: meta.chunkCount, maxSize: MAX_LARGE_UPLOAD });
 }
 
+async function largeUploadStatus(res, id) {
+  let meta;
+  try {
+    meta = await readLargeMeta(id);
+  } catch (error) {
+    if (Number(error?.statusCode) !== 404) throw error;
+    try {
+      const manifest = JSON.parse(await readFile(largeManifestPath(id), 'utf8'));
+      return json(res, 200, { state: 'complete', uploadId: id, ...manifest });
+    } catch {
+      return json(res, 404, { error: '上传任务不存在或已过期' });
+    }
+  }
+  const dir = largeUploadPath(id);
+  const received = [];
+  for (let index = 0; index < meta.chunkCount; index++) {
+    const expected = Math.min(meta.chunkSize, meta.size - index * meta.chunkSize);
+    const info = await stat(join(dir, `${index}.part`)).catch(() => null);
+    if (info?.isFile() && info.size === expected) received.push(index);
+  }
+  return json(res, 200, {
+    state: meta.controlState === 'paused' ? 'paused' : meta.controlState === 'cancelled' ? 'cancelled' : 'uploading',
+    uploadId: meta.id,
+    name: meta.name,
+    type: meta.type,
+    size: meta.size,
+    device: meta.device,
+    chunkSize: meta.chunkSize,
+    chunkCount: meta.chunkCount,
+    createdAt: meta.createdAt,
+    received,
+  });
+}
+
+async function controlLargeUpload(req, res, id) {
+  const input = await readJsonBody(req);
+  const action = String(input.action || '');
+  if (!['pause', 'resume', 'cancel'].includes(action)) return json(res, 400, { error: '上传控制动作无效' });
+  const meta = await readLargeMeta(id);
+  if (meta.controlState === 'cancelled') {
+    if (action === 'cancel') return json(res, 200, { ok: true, uploadId: id, state: 'cancelled' });
+    return json(res, 410, { error: '上传任务已取消' });
+  }
+
+  if (action === 'pause') meta.controlState = 'paused';
+  if (action === 'resume') meta.controlState = 'uploading';
+  if (action === 'cancel') meta.controlState = 'cancelled';
+  meta.controlUpdatedAt = Date.now();
+  await writeFile(join(largeUploadPath(id), 'meta.json'), JSON.stringify(meta), { mode: 0o600 });
+
+  if (action === 'cancel') {
+    const timer = setTimeout(() => rm(largeUploadPath(id), { recursive: true, force: true }).catch(() => {}), 3000);
+    timer.unref?.();
+  }
+  return json(res, 200, { ok: true, uploadId: id, state: meta.controlState });
+}
+
 async function writeLargeChunk(req, res, id, indexValue) {
   const meta = await readLargeMeta(id);
+  if (meta.controlState === 'paused') return json(res, 423, { error: '上传任务已暂停' });
+  if (meta.controlState === 'cancelled') return json(res, 410, { error: '上传任务已取消' });
   const index = Number(indexValue);
   if (!Number.isInteger(index) || index < 0 || index >= meta.chunkCount) return json(res, 400, { error: '分块编号无效' });
   const expected = Math.min(meta.chunkSize, meta.size - index * meta.chunkSize);
   const length = Number(req.headers['content-length'] || 0);
   if (length && length !== expected) return json(res, 400, { error: '分块大小不匹配' });
+  const expectedHash = String(req.headers['x-drop-chunk-sha256'] || '').trim().toLowerCase();
+  if (expectedHash && !/^[0-9a-f]{64}$/.test(expectedHash)) return json(res, 400, { error: '分块校验值无效' });
 
   const dir = largeUploadPath(id);
-  const temp = join(dir, `${index}.tmp`);
   const target = join(dir, `${index}.part`);
+  const existing = await stat(target).catch(() => null);
+  if (existing?.isFile() && existing.size === expected) return json(res, 200, { ok: true, index, size: expected, alreadyReceived: true });
+  const temp = join(dir, `${index}.${randomUUID()}.tmp`);
   const output = createWriteStream(temp, { flags: 'w', mode: 0o600 });
+  const hasher = expectedHash ? createHash('sha256') : null;
   let received = 0;
   try {
     for await (const chunk of req) {
       received += chunk.length;
       if (received > expected) throw Object.assign(new Error('分块超过预期大小'), { statusCode: 413 });
+      hasher?.update(chunk);
       if (!output.write(chunk)) await once(output, 'drain');
     }
     output.end();
     await once(output, 'finish');
     if (received !== expected) throw Object.assign(new Error('分块未完整上传'), { statusCode: 400 });
+    if (hasher && hasher.digest('hex') !== expectedHash) throw Object.assign(new Error('分块完整性校验失败'), { statusCode: 422 });
+    const latestMeta = await readLargeMeta(id);
+    if (latestMeta.controlState === 'cancelled') throw Object.assign(new Error('上传任务已取消'), { statusCode: 410 });
     await rename(temp, target);
     return json(res, 200, { ok: true, index, size: received });
   } catch (error) {
@@ -549,40 +656,58 @@ async function cancelLargeUpload(res, id) {
 }
 
 async function completeLargeUpload(res, id) {
-  const meta = await readLargeMeta(id);
-  const dir = largeUploadPath(id);
-  for (let index = 0; index < meta.chunkCount; index++) {
-    const info = await stat(join(dir, `${index}.part`)).catch(() => null);
-    const expected = Math.min(meta.chunkSize, meta.size - index * meta.chunkSize);
-    if (!info || info.size !== expected) return json(res, 409, { error: `分块 ${index + 1}/${meta.chunkCount} 尚未完整上传` });
-  }
+  let existingManifest = null;
+  try { existingManifest = JSON.parse(await readFile(largeManifestPath(id), 'utf8')); } catch { /* not finalized yet */ }
+  if (existingManifest?.completion) return json(res, 200, existingManifest.completion);
 
-  await mkdir(LARGE_DIR, { recursive: true, mode: 0o700 });
-  const tempFinal = `${largeFilePath(id)}.tmp`;
-  const output = createWriteStream(tempFinal, { flags: 'w', mode: 0o600 });
+  let meta;
   try {
-    for (let index = 0; index < meta.chunkCount; index++) {
-      for await (const chunk of createReadStream(join(dir, `${index}.part`))) {
-        if (!output.write(chunk)) await once(output, 'drain');
-      }
-    }
-    output.end();
-    await once(output, 'finish');
+    meta = await readLargeMeta(id);
   } catch (error) {
-    output.destroy();
-    await rm(tempFinal, { force: true }).catch(() => {});
-    throw error;
+    const finalInfo = await stat(largeFilePath(id)).catch(() => null);
+    if (!existingManifest || !finalInfo?.isFile() || finalInfo.size !== Number(existingManifest.size)) throw error;
+    // Recover the narrow crash window where the merged file/manifest existed but
+    // publication did not complete. Reuse the durable manifest rather than
+    // forcing the sender to re-upload the file.
+    meta = existingManifest;
   }
-  const finalInfo = await stat(tempFinal);
-  if (finalInfo.size !== meta.size) {
-    await rm(tempFinal, { force: true });
-    return json(res, 500, { error: '合并后的文件大小校验失败' });
+  if (meta.controlState === 'paused') return json(res, 423, { error: '上传任务已暂停' });
+  if (meta.controlState === 'cancelled') return json(res, 410, { error: '上传任务已取消' });
+  const dir = largeUploadPath(id);
+  await mkdir(LARGE_DIR, { recursive: true, mode: 0o700 });
+  let finalInfo = await stat(largeFilePath(id)).catch(() => null);
+  if (!finalInfo?.isFile() || finalInfo.size !== Number(meta.size)) {
+    for (let index = 0; index < meta.chunkCount; index++) {
+      const info = await stat(join(dir, `${index}.part`)).catch(() => null);
+      const expected = Math.min(meta.chunkSize, meta.size - index * meta.chunkSize);
+      if (!info || info.size !== expected) return json(res, 409, { error: `分块 ${index + 1}/${meta.chunkCount} 尚未完整上传` });
+    }
+
+    const tempFinal = `${largeFilePath(id)}.tmp`;
+    const output = createWriteStream(tempFinal, { flags: 'w', mode: 0o600 });
+    try {
+      for (let index = 0; index < meta.chunkCount; index++) {
+        for await (const chunk of createReadStream(join(dir, `${index}.part`))) {
+          if (!output.write(chunk)) await once(output, 'drain');
+        }
+      }
+      output.end();
+      await once(output, 'finish');
+    } catch (error) {
+      output.destroy();
+      await rm(tempFinal, { force: true }).catch(() => {});
+      throw error;
+    }
+    finalInfo = await stat(tempFinal);
+    if (finalInfo.size !== meta.size) {
+      await rm(tempFinal, { force: true });
+      return json(res, 500, { error: '合并后的文件大小校验失败' });
+    }
+    await rename(tempFinal, largeFilePath(id));
   }
-  await rename(tempFinal, largeFilePath(id));
-  const expires = Math.floor((Date.now() + LARGE_RETENTION_MS) / 1000);
+  const expires = Number(existingManifest?.expires) || Math.floor((Date.now() + LARGE_RETENTION_MS) / 1000);
   const manifest = { id, name: meta.name, type: meta.type, size: meta.size, device: meta.device, createdAt: meta.createdAt, expires };
   await writeFile(largeManifestPath(id), JSON.stringify(manifest), { mode: 0o600 });
-  await rm(dir, { recursive: true, force: true });
 
   const marker = `${LARGE_MARKER}${Buffer.from(JSON.stringify(manifest)).toString('base64url')}`;
   const query = new URLSearchParams({ title: meta.device });
@@ -593,7 +718,10 @@ async function completeLargeUpload(res, id) {
   });
   const body = await upstream.text();
   if (!upstream.ok) return json(res, 502, { error: `ntfy publish returned ${upstream.status}` });
-  return json(res, 200, mapMessage(JSON.parse(body)));
+  const completion = mapMessage(JSON.parse(body));
+  await writeFile(largeManifestPath(id), JSON.stringify({ ...manifest, completion }), { mode: 0o600 });
+  await rm(dir, { recursive: true, force: true }).catch(() => {});
+  return json(res, 200, completion);
 }
 
 function contentDisposition(filename) {
@@ -659,6 +787,11 @@ async function cleanupLargeFiles() {
     const dir = join(UPLOAD_DIR, name);
     try {
       const info = await stat(dir);
+      const meta = await readFile(join(dir, 'meta.json'), 'utf8').then(JSON.parse).catch(() => null);
+      if (meta?.controlState === 'cancelled') {
+        await rm(dir, { recursive: true, force: true });
+        continue;
+      }
       if (now - info.mtimeMs > 24 * 60 * 60 * 1000) await rm(dir, { recursive: true, force: true });
     } catch { /* ignore races */ }
   }
@@ -788,8 +921,11 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && url.pathname === '/api/upload') return await publishFile(req, res, url);
     if (req.method === 'POST' && url.pathname === '/api/large/init') return await initLargeUpload(req, res);
-    const cancelLargeMatch = /^\/api\/large\/([0-9a-f-]{36})$/i.exec(url.pathname);
-    if (req.method === 'DELETE' && cancelLargeMatch) return await cancelLargeUpload(res, cancelLargeMatch[1]);
+    const uploadLargeMatch = /^\/api\/large\/([0-9a-f-]{36})$/i.exec(url.pathname);
+    if (req.method === 'GET' && uploadLargeMatch) return await largeUploadStatus(res, uploadLargeMatch[1]);
+    if (req.method === 'DELETE' && uploadLargeMatch) return await cancelLargeUpload(res, uploadLargeMatch[1]);
+    const controlMatch = /^\/api\/large\/([0-9a-f-]{36})\/control$/i.exec(url.pathname);
+    if (req.method === 'POST' && controlMatch) return await controlLargeUpload(req, res, controlMatch[1]);
     const chunkMatch = /^\/api\/large\/([0-9a-f-]{36})\/chunk\/(\d+)$/i.exec(url.pathname);
     if (req.method === 'PUT' && chunkMatch) return await writeLargeChunk(req, res, chunkMatch[1], chunkMatch[2]);
     const completeMatch = /^\/api\/large\/([0-9a-f-]{36})\/complete$/i.exec(url.pathname);

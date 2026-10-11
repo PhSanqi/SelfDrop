@@ -13,10 +13,12 @@ SelfDrop works well when you want one small private endpoint that all of your de
 - send text, images, audio, video, and files from a browser;
 - move files between devices on different networks;
 - keep a chat-like timeline instead of a paste-bin or forum-style topic view;
-- upload multiple files from desktop and mobile;
-- handle larger files with chunked uploads and Range downloads;
-- see upload progress, transfer speed, stop an upload, and wait for server confirmation;
-- preview images in the timeline and browse transferred files separately;
+- upload multiple files from desktop and mobile, append new files to an active queue, and control files individually;
+- handle larger files with resumable chunked uploads and Range downloads;
+- keep per-file progress visible, pause/resume/cancel tasks, retry failures from confirmed chunks, and wait for server confirmation;
+- recover cached media uploads after reopening supported browsers and use Chromium Background Fetch when available;
+- verify large upload chunks with SHA-256 and make finalization idempotent;
+- preview images and videos in the timeline and browse transferred files separately;
 - use the same web UI on Windows, Linux, Android, and iOS;
 - clean SelfDrop's server-side copies without touching the original files on your devices.
 
@@ -43,13 +45,16 @@ The result is much lighter than deploying a complete chat platform while still w
 
 - Chat-style single transfer timeline
 - Text and file messages
-- Multi-file selection on desktop and mobile
-- Image previews
+- Multi-file selection on desktop and mobile with appendable upload queue
+- Per-file progress, pause/resume, cancel, and retry controls
+- Image and video previews
 - File library view
-- Chunked large-file uploads (application limit: 4 GiB)
+- Resumable chunked large-file uploads (application limit: 4 GiB)
+- Browser-native recoverable media staging with OPFS where supported
+- Chromium Background Fetch progressive enhancement where supported
+- SHA-256 verification for large-file chunks
+- Idempotent chunk acceptance and finalization
 - HTTP Range downloads
-- Upload progress and speed
-- Stop/cancel upload
 - Server-confirmed completion state
 - SSE real-time updates
 - Follow-latest scrolling that does not interrupt history reading
@@ -170,7 +175,7 @@ For a public deployment, back up data before changing retention or using bulk cl
 
 ## Browser notes
 
-The UI is browser-first, so no per-device SelfDrop client is required. Modern Chromium, Safari/WebKit, and mobile browsers are supported. iOS uses a compatibility path that materializes picker-backed files before network upload and serializes file/chunk transfer to avoid known WebKit file-upload failure modes.
+The UI is browser-first, so no per-device SelfDrop client is required. Modern Chromium, Safari/WebKit, and mobile browsers are supported. Uploads use one resumable chunk protocol across browsers. Chromium can progressively hand eligible transfers to Background Fetch; browsers with Origin Private File System support can stage media temporarily so reopening the page can continue an interrupted upload without starting from byte zero. iOS/WebKit still cannot guarantee indefinite network execution after the browser is fully closed, so SelfDrop treats reopen-and-resume as the reliable fallback rather than pretending background execution is guaranteed. Screen Wake Lock and a leave-page warning are used when the active transfer still depends on the page lifecycle.
 
 ## Development
 
